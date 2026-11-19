@@ -28,7 +28,13 @@ describe("inbound requests", () => {
     expect(task.output).toBe("Here are five candidates.");
     expect(Number(task.costUsd)).toBeCloseTo(0.001);
     expect(notify.sent).toEqual([
-      { channel: "slack", target: "C_TALENT", threadRef: "thread-1", text: "Here are five candidates." },
+      {
+        agentId: data.agents.sourcer.id,
+        channel: "slack",
+        target: "C_TALENT",
+        threadRef: "thread-1",
+        text: "Here are five candidates.",
+      },
     ]);
 
     const system = model.inputs[0]!.system;
@@ -320,6 +326,38 @@ describe("routines", () => {
     const after = await db.query.routines.findFirst({ where: eq(s.routines.id, routine!.id) });
     expect(after!.enabled).toBe(false);
     expect(notify.to("U_HEAD_TALENT")[0]!.text).toContain('paused Nova\'s routine "Monday pipeline review"');
+  });
+});
+
+describe("per-employee model", () => {
+  it("runs each employee on its own model and effort", async () => {
+    const { db, data } = await freshDb();
+    const model = new ScriptedModel([{ text: "Nova here" }, { text: "Atlas here" }]);
+    const { deps: d } = deps(db, model);
+
+    await handleInbound(d, slack(data.orgId, "U_RECRUITER", "hi"));
+    await handleInbound(d, slack(data.orgId, "U_OPS", "hi", { agentAddress: "B_ATLAS", replyTarget: "C_OPS" }));
+
+    expect(model.inputs.map((i) => [i.model, i.effort])).toEqual([
+      ["claude-opus-5-5", "high"],
+      ["claude-sonnet-5-5", "medium"],
+    ]);
+  });
+
+  it("keeps a running task on the model it started with", async () => {
+    const { db, data } = await freshDb();
+    const model = new ScriptedModel([{ toolCalls: [sendOutreach] }, { text: "Sent." }]);
+    const { deps: d, notify } = deps(db, model);
+
+    await handleInbound(d, slack(data.orgId, "U_RECRUITER", "Email this candidate"));
+    // The manager switches Nova to Haiku while the task waits for approval.
+    await db.update(s.agents).set({ model: "claude-haiku-5-5" }).where(eq(s.agents.id, data.agents.sourcer.id));
+    const approvalId = notify.to("U_HEAD_TALENT")[0]!.approval!.approvalId;
+    await decideApproval(d, { approvalId, deciderId: data.people.headOfTalent.id, decision: "approved" });
+
+    expect(model.inputs.map((i) => i.model)).toEqual(["claude-opus-5-5", "claude-opus-5-5"]);
+    expect(model.inputs[1]!.system).toBe(model.inputs[0]!.system);
+    expect(model.inputs[1]!.tools).toEqual(model.inputs[0]!.tools);
   });
 });
 

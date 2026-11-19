@@ -14,7 +14,8 @@ export interface ToolCall {
 
 export type TranscriptItem =
   | { role: "user"; text: string }
-  | { role: "assistant"; text?: string; toolCalls: ToolCall[] }
+  /** `raw` holds the model's own content blocks (incl. thinking), replayed unchanged. */
+  | { role: "assistant"; text?: string; toolCalls: ToolCall[]; raw?: unknown }
   | { role: "tool_result"; callId: string; tool: string; ok: boolean; content: string };
 
 export interface ToolSpec {
@@ -24,8 +25,12 @@ export interface ToolSpec {
   inputSchema: Record<string, unknown>;
 }
 
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
 export interface ModelStepInput {
   model: string;
+  /** Per-employee thinking effort; the adapter's default when not set. */
+  effort?: Effort | null;
   system: string;
   transcript: TranscriptItem[];
   tools: ToolSpec[];
@@ -33,6 +38,8 @@ export interface ModelStepInput {
 
 export interface ModelStepOutput {
   text?: string;
+  /** Provider-specific content blocks to replay on the next turn. */
+  raw?: unknown;
   /** Empty means the model is done and `text` is the final answer. */
   toolCalls: ToolCall[];
   usage: { inputTokens: number; outputTokens: number; costUsd: number };

@@ -12,7 +12,7 @@ import { audit } from "./audit.js";
 import { isBuiltin, runBuiltin } from "./builtins.js";
 import { contactFor, loadAgent, loadCaller, monthToDateSpend, type LoadedAgent } from "./lookup.js";
 import { buildSystemPrompt, memoriesForTask, toolsForCaller } from "./prompt.js";
-import type { EngineDeps, ToolCall, ToolResult, TranscriptItem } from "./types.js";
+import type { EngineDeps, Effort, ToolCall, ToolResult, ToolSpec, TranscriptItem } from "./types.js";
 
 const DONE = new Set(["completed", "failed", "denied", "cancelled"]);
 
@@ -57,6 +57,7 @@ export async function runTask(deps: EngineDeps, taskId: string): Promise<Task> {
   const replyToRequester = async (text: string) => {
     if (!task.replyChannel || !task.replyTarget) return;
     await deps.notify.send({
+      agentId: agent.id,
       channel: task.replyChannel,
       target: task.replyTarget,
       threadRef: conversation?.threadRef,
@@ -109,16 +110,24 @@ export async function runTask(deps: EngineDeps, taskId: string): Promise<Task> {
 
   // --- the model loop --------------------------------------------------------
 
-  const view = await toolsForCaller(deps.tools, agent, caller, now());
-  const memories = await memoriesForTask(db, agent.id, caller, task.input);
-  const system = buildSystemPrompt({ agent, requester, caller, source: task.source, view, memories, now: now() });
+  // Fixed once per task, so a resumed task shows the model exactly what it saw before.
+  // The model too: changing an employee's model applies to new tasks, not ones already running.
+  let context = task.modelContext as { model: string; effort?: Effort | null; system: string; tools: ToolSpec[] } | null;
+  if (!context) {
+    const view = await toolsForCaller(deps.tools, agent, caller, now());
+    const memories = await memoriesForTask(db, agent.id, caller, task.input);
+    const system = buildSystemPrompt({ agent, requester, caller, source: task.source, view, memories, now: now() });
+    context = { model: agent.model, effort: agent.effort, system, tools: view.offered };
+    await save({ modelContext: context });
+  }
+  const { model, effort, system, tools: offeredTools } = context;
 
   for (let step = 0; step < maxSteps; step++) {
-    const out = await deps.model.step({ model: agent.model, system, transcript, tools: view.offered });
+    const out = await deps.model.step({ model, effort, system, transcript, tools: offeredTools });
     usage.input += out.usage.inputTokens;
     usage.output += out.usage.outputTokens;
     usage.cost += out.usage.costUsd;
-    transcript.push({ role: "assistant", text: out.text, toolCalls: out.toolCalls });
+    transcript.push({ role: "assistant", text: out.text, toolCalls: out.toolCalls, raw: out.raw });
 
     if (out.toolCalls.length === 0) {
       return end("completed", out.text?.trim() || "Done.");
@@ -155,7 +164,7 @@ export async function runTask(deps: EngineDeps, taskId: string): Promise<Task> {
           const summary =
             `${requester?.name ?? "Someone"} asked ${agent.name} to run ${p.call.name}:\n` +
             truncate(JSON.stringify(p.call.args, null, 2), 1500);
-          await deps.notify.send({ ...contact, text: summary, approval: { approvalId: p.approvalId, summary } });
+          await deps.notify.send({ agentId: agent.id, ...contact, text: summary, approval: { approvalId: p.approvalId, summary } });
         }
       }
       const approverNames = await namesOf(deps, [...new Set(pendingApprovals.map((p) => p.approverId))]);

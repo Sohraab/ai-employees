@@ -54,7 +54,8 @@ export async function seed(db: Db) {
       instructions:
         "You are Nova, a recruiting sourcer on the Talent team. You find and shortlist candidates, " +
         "draft outreach, and keep hiring managers updated. Never contact a candidate without an approved message.",
-      model: "claude-sonnet-5-5",
+      model: "claude-opus-5-5",
+      effort: "high",
       managerId: headOfTalent!.id,
       teamId: talent!.id,
       executorWorkspace: "sourcer",
@@ -126,6 +127,7 @@ export async function seed(db: Db) {
       instructions:
         "You are Atlas. You pull numbers from the warehouse, explain changes, and post clear summaries.",
       model: "claude-sonnet-5-5",
+      effort: "medium",
       managerId: opsLead!.id,
       teamId: ops!.id,
       executorWorkspace: "ops-reporter",

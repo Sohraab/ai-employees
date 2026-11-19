@@ -14,6 +14,7 @@ An AI employee is one record (`agents`) plus everything attached to it. Channels
 | **Access grants** | *Who* may ask it for *what* | `access_grants` |
 | **Routines** | Work it does on a schedule | `routines` |
 | **Memory** | What it knows, scoped by who may see it | `memories` |
+| **Model** | Which Claude model it runs on, and how hard it thinks (effort) | `agents.model`, `agents.effort` |
 | **Budget** | Monthly spend cap | `agents.monthly_budget_usd` |
 
 ## 2. Connectors and credentials
@@ -35,7 +36,12 @@ Tool rules (`agent_tools`) are our policy layer on top of Executor:
 - `required_scope`: the kind of work the caller's grant must cover (e.g. `candidate_outreach`)
 - `requires_approval`: a human must approve each call
 
-Executor's own policies and approval gates stay on as a second line of defence.
+Each employee's Executor workspace is an Executor **scoped connection**: one URL that reaches only the apps,
+accounts and tools chosen for that employee. The engine calls tools through it **one at a time** (Executor's
+`search` and `call`), after its own permission check. Executor's codemode (`execute`) is deliberately not
+given to the model, because a program could call tools without passing that check. Approvals are handled
+here, per person and scope, so the scoped connection runs in Executor's `automatic` mode. The connection
+still limits which tools exist at all.
 
 **Rule of thumb for new tools:** read-only → `talk`; writes inside the company → `assign`;
 anything leaving the company (emails, messages to customers or candidates) or anything destructive → `assign` + approval.
@@ -122,20 +128,63 @@ A routine is `cron + timezone + prompt + run_as + deliver_to`.
 - Recall filters by the requester first, then ranks by relevance. It uses Postgres full-text search for now and can move to embeddings later.
 - Managers can view, edit and archive memories in the admin console.
 
+### Many conversations, one memory
+
+An AI employee talks to many people at once, as a colleague does. How this works:
+
+**Already built**
+- **Each thread is its own conversation** (a Slack thread, a DM, an email thread) with its own recent history.
+  Riley's thread and Sam's thread don't mix.
+- **Conversations run in parallel.** The job queue runs tasks for different people at the same time.
+- **One memory pool per employee, shared by every conversation and channel**, filtered by visibility.
+  What the Talent team taught Nova in one thread is available in every Talent thread. What Riley told
+  her in a DM is only used when Riley is asking.
+
+**To build next, so it works like a colleague**
+1. **Keep one conversation in order.** Two quick messages in the same thread should run one after the
+   other, not in parallel. The queue gets one lane per conversation.
+2. **Remember automatically.** After each task, a short review step decides what is worth keeping and
+   saves it, so nothing depends on the model remembering to call `memory.save`. Where something was said
+   sets the default visibility: a DM is private, a team channel is team, and an instruction from its
+   manager is agent-wide.
+3. **Know what else it's working on.** A "my current work" summary goes into every prompt: open tasks,
+   pending approvals, and promises it has made ("I'll send the shortlist Friday"). It is filtered by the same
+   visibility rules, so it can say "Riley already asked me for this; I'll share the shortlist" without
+   revealing private details.
+4. **Ask other people.** A built-in `ask_person` tool opens a DM with someone else, for example "Harper,
+   what's the budget for this role?". The task waits for the reply, as it waits for an approval, then
+   continues. It also follows up on promises it made.
+5. **Keep confidences, as a person would.** Knowledge moves only as far as its visibility allows. The agent
+   never quotes one person's private conversation to someone else, and unverified or outside senders
+   never write to the shared memory.
+
 ## 7. Agent to agent
 
 An agent can hand work to another agent with a built-in `agent.delegate` tool. This creates a child task
 (`parent_task_id`). The child runs **as the original human requester**, so delegating can't be used to
 gain access. The calling agent's own grant on the target agent must also allow it.
 
-## 8. Oversight
+## 8. Choosing a model per employee
+
+Each employee has its own `model` and `effort`:
+
+| Model | Good for | Price (input / output per 1M tokens) |
+|---|---|---|
+| `claude-opus-5-5` | Judgment-heavy work: sourcing, negotiation drafts, analysis | $4 / $20 |
+| `claude-sonnet-5-5` | Everyday work: reporting, summaries, routine requests | $2 / $10 |
+| `claude-haiku-5-5` | High-volume, simple jobs: triage, tagging, routing | $0.10 / $0.50 |
+
+Effort (`low` → `max`) sets how hard the model thinks; leave it empty for the default (`high`).
+A task keeps the model it started with, so changing an employee's model only affects new tasks.
+
+## 9. Oversight
 
 - **Pause switch:** a paused agent rejects every request and skips routines.
 - **Budget:** when the monthly cap is reached, new tasks are refused and the manager is notified.
 - **Audit log:** every message, access decision, tool call, approval, and memory write.
 - **Admin console:** agents, grants, tools, routines, the task feed, pending approvals, memories, and spend.
 
-## 9. Architecture
+## 10. Architecture
 
 ```
             ┌────────────── Channel adapters ──────────────┐
@@ -156,21 +205,21 @@ gain access. The calling agent's own grant on the target agent must also allow i
 The engine is independent of any channel. The model and the tool executor are behind interfaces, so
 tests run the full flow with a scripted fake model and fake tools.
 
-## 10. Build phases
+## 11. Build phases
 
 | # | Phase | Done when |
 |---|---|---|
 | 1 | ✅ Data model, identity, access, memory visibility | Schema migrated; 24 tests pass |
 | 2 | ✅ **Engine core** (router, runner, tool gate, approvals, memory tools, routine runs, audit) | The full flow passes in tests with a fake model: allowed, denied, approval → resume, receptionist |
-| 3 | Claude model adapter + Executor tool adapter | A real agent answers and calls a real read-only tool |
-| 4 | Slack adapter + API server + job queue | Someone @mentions Nova in Slack and gets an answer in the thread; approvals via buttons |
+| 3 | ✅ Claude model adapter + Executor tool adapter | A real agent answers and calls a real read-only tool |
+| 4 | ✅ Slack adapter (one app per employee) + API server + job queue | Someone @mentions Nova in Slack and gets an answer in the thread; approvals via buttons |
 | 5 | Routine scheduler | Atlas posts the weekday digest on time |
 | 6 | Email adapter | Emailing Nova gets a reply in the same thread; spoofed senders are limited to `talk` |
 | 7 | Admin console | A manager can create an agent, grant access, and approve or deny actions without touching the database |
 | 8 | WhatsApp, delegated credentials, phone | — |
 
-## 11. Decisions still open
+## 12. Decisions still open
 
-1. **Slack setup:** one Slack app per agent (each a real user with its own name in the sidebar, but more setup) or one app with many personas (simpler). *Recommendation:* one app per agent; it feels like a colleague.
+1. ~~Slack setup~~: decided, one Slack app per employee.
 2. **Credentials:** agent-owned only for the MVP? *Recommendation:* yes.
 3. **Hosting:** a single container (API and worker) plus managed Postgres, e.g. Fly.io or Railway with Neon.

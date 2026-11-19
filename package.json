@@ -13,10 +13,20 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "start": "tsx src/server/main.ts",
+    "dev": "tsx watch src/server/main.ts",
+    "slack:manifest": "tsx src/scripts/slack-manifest.ts",
+    "executor:check": "tsx src/scripts/executor-check.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.10.0",
+    "@hono/node-server": "^2.1.9",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@slack/web-api": "^8.4.0",
     "drizzle-orm": "^0.44.0",
+    "hono": "^4.13.19",
+    "pg-boss": "^12.38.2",
     "postgres": "^3.4.5"
   },
   "devDependencies": {

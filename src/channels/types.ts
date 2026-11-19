@@ -25,6 +25,8 @@ export interface InboundEnvelope {
 }
 
 export interface OutboundMessage {
+  /** The AI employee sending it: picks which Slack app / inbox / number it comes from. */
+  agentId: string;
   channel: Channel;
   /** Slack channel id, email address, phone number. */
   target: string;

@@ -155,7 +155,10 @@ export const agents = pgTable(
     role: text("role").notNull(),
     /** System prompt: who the agent is, how it works, what it must never do. */
     instructions: text("instructions").notNull(),
+    /** Which Claude model this employee runs on, e.g. "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5". */
     model: text("model").notNull(),
+    /** How hard it thinks: low | medium | high | xhigh | max. Null = the app default ("high"). */
+    effort: text("effort").$type<"low" | "medium" | "high" | "xhigh" | "max">(),
     status: agentStatusEnum("status").notNull().default("active"),
     /** The human responsible for this agent. Default approver for risky actions. */
     managerId: uuid("manager_id").references(() => people.id, { onDelete: "set null" }),
@@ -358,6 +361,11 @@ export const tasks = pgTable(
     replyTarget: text("reply_target"),
     /** Full model transcript, so a task can pause for approval and resume later. */
     transcript: jsonb("transcript").$type<unknown[]>().notNull().default([]),
+    /**
+     * System prompt and tool list, fixed when the task starts. They must stay
+     * byte-identical while the task runs (the model's thinking is tied to them).
+     */
+    modelContext: jsonb("model_context").$type<{ model: string; effort?: string | null; system: string; tools: unknown[] }>(),
     inputTokens: integer("input_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull().default(0),
     costUsd: numeric("cost_usd", { precision: 10, scale: 4 }).notNull().default("0"),

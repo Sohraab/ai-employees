@@ -46,6 +46,7 @@ export async function startRoutineRun(deps: EngineDeps, routineId: string): Prom
       const contact = await contactFor(db, agent.managerId);
       if (contact) {
         await deps.notify.send({
+          agentId: agent.id,
           ...contact,
           text: `I paused ${agent.name}'s routine "${routine.name}" because the person it runs as no longer has access.`,
         });

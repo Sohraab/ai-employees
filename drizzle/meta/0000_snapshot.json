@@ -1,5 +1,5 @@
 {
-  "id": "2f54a3d9-efa3-4623-94e2-5d88b93581a9",
+  "id": "07e5012d-86eb-40ca-9f63-a8d1afa2d312",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -463,6 +463,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "effort": {
+          "name": "effort",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "status": {
           "name": "status",
@@ -1858,6 +1864,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'[]'::jsonb"
+        },
+        "model_context": {
+          "name": "model_context",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "input_tokens": {
           "name": "input_tokens",

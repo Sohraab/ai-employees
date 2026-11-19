@@ -82,7 +82,7 @@ export async function handleInbound(deps: EngineDeps, env: InboundEnvelope): Pro
   });
 
   const reply = async (text: string) => {
-    await deps.notify.send({ channel: env.channel, target: env.replyTarget, threadRef: env.threadRef, text });
+    await deps.notify.send({ agentId: agent.id, channel: env.channel, target: env.replyTarget, threadRef: env.threadRef, text });
     await db.insert(messages).values({ conversationId: conversation!.id, direction: "outbound", body: text });
   };
 
@@ -102,6 +102,7 @@ export async function handleInbound(deps: EngineDeps, env: InboundEnvelope): Pro
         const contact = await contactFor(db, agent.managerId);
         if (contact) {
           await deps.notify.send({
+            agentId: agent.id,
             ...contact,
             text: `${agent.name} got a message from an unknown sender (${env.channel}: ${env.senderHandle}):\n\n${env.text}`,
           });

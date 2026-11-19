@@ -7,7 +7,9 @@ Slack, email, WhatsApp and (later) phone, the way you'd reach a colleague.
 
 Built so far: the data model, the rules for identity, access and memory, and the **engine** that runs requests end to end
 (routing, permission-gated tool loop, approvals that pause and resume, memory tools, routine runs, budgets, audit).
-The engine talks to the model, Executor and the channels through interfaces; real adapters come next.
+Connected to real services: **Claude** (each employee picks its own model and effort), **Executor** (each
+employee's own scoped connection), and **Slack** (one Slack app per employee, with Approve/Deny buttons).
+Set up an employee in Slack with [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md).
 
 ## Core ideas
 
@@ -86,6 +88,16 @@ Senders whose identity isn't verified for this message (e.g. an email failing DK
 | `prompt.ts` | System prompt: identity, skills, who it's working for, what that person may have it do, visible memories |
 | `types.ts` | `AgentModel`, `ToolExecutor`, `Notifier` interfaces (Claude, Executor and channel adapters plug in here) |
 
+## Adapters
+
+| File | Does |
+|---|---|
+| `src/adapters/claude.ts` | Claude Messages API: per-employee model and effort, raw blocks replayed unchanged, refusal fallback, cost tracking |
+| `src/adapters/executor.ts` | Executor over MCP: lists and calls tools one at a time through the employee's scoped connection |
+| `src/channels/slack.ts` | Slack: request signing, events → envelopes, sending as the right app, approval buttons, app manifest |
+| `src/server/app.ts` | HTTP endpoints: `/slack/:slug/events`, `/slack/:slug/interactions`, `/healthz` |
+| `src/server/main.ts` | Server + worker; tasks queued in Postgres (pg-boss) |
+
 ## Getting started
 
 ```bash
@@ -108,6 +120,10 @@ npm run db:migrate && npm run db:seed
 npm test
 ```
 
+```bash
+npm start
+```
+
 Tests apply the real migration to an in-process Postgres (PGlite), so `npm test` needs no Docker.
 
 After changing `src/db/schema.ts`, run `npm run db:generate` to create a new migration.
@@ -124,9 +140,10 @@ After changing `src/db/schema.ts`, run `npm run db:generate` to create a new mig
 ## Roadmap
 
 1. ✅ Data model, identity, access rules, memory visibility
-2. ✅ Engine core: router, permission-gated runner, approvals, memory tools, routine runs, budgets, audit (44 tests)
-3. Claude model adapter (Messages API with tool use) and Executor tool adapter
-4. Slack adapter (Bolt) + API server + job queue (pg-boss); approvals via Slack buttons
+2. ✅ Engine core: router, permission-gated runner, approvals, memory tools, routine runs, budgets, audit
+3. ✅ Claude model adapter (per-employee model and effort) and Executor tool adapter
+4. ✅ Slack adapter (one app per employee) + API server + job queue (pg-boss); approvals via Slack buttons
+4b. Working like a colleague: per-conversation ordering, automatic memory, awareness of its other work, asking other people (see `docs/PLAN.md`)
 5. Routine scheduler (cron → `next_run_at`)
 6. Email adapter (inbound via Postmark or Resend, with SPF/DKIM checks)
 7. Admin console (Next.js): agents, grants, routines, task feed, memories, costs
