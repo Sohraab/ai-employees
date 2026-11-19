@@ -297,6 +297,50 @@ export const routines = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Slack provisioning (one Slack app per AI employee, created automatically)
+// ---------------------------------------------------------------------------
+
+/**
+ * The Slack admin's app configuration token, used to create one app per
+ * employee. Slack expires these tokens every 12 hours; the refresh token
+ * renews them. Secrets are stored encrypted (core/secrets.ts).
+ */
+export const slackWorkspaces = pgTable("slack_workspaces", {
+  orgId: uuid("org_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  configTokenEnc: text("config_token_enc").notNull(),
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  configTokenExpiresAt: timestamp("config_token_expires_at", { withTimezone: true }).notNull(),
+  teamId: text("team_id"),
+  updatedAt: updatedAt(),
+});
+
+/** Each AI employee's own Slack app and its credentials. */
+export const agentSlackApps = pgTable(
+  "agent_slack_apps",
+  {
+    agentId: uuid("agent_id")
+      .primaryKey()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    appId: text("app_id").notNull().unique(),
+    clientId: text("client_id").notNull(),
+    clientSecretEnc: text("client_secret_enc").notNull(),
+    signingSecretEnc: text("signing_secret_enc").notNull(),
+    /** Set once a workspace admin clicks "Add to Slack". */
+    botTokenEnc: text("bot_token_enc"),
+    botUserId: text("bot_user_id"),
+    teamId: text("team_id"),
+    installedAt: timestamp("installed_at", { withTimezone: true }),
+    /** One-time value tying the "Add to Slack" redirect back to this employee. */
+    installState: text("install_state").unique(),
+    installStateExpiresAt: timestamp("install_state_expires_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Conversations & work
 // ---------------------------------------------------------------------------
 
@@ -483,6 +527,7 @@ export const personIdentitiesRelations = relations(personIdentities, ({ one }) =
 }));
 
 export const agentsRelations = relations(agents, ({ one, many }) => ({
+  slackApp: one(agentSlackApps, { fields: [agents.id], references: [agentSlackApps.agentId] }),
   manager: one(people, { fields: [agents.managerId], references: [people.id] }),
   team: one(teams, { fields: [agents.teamId], references: [teams.id] }),
   skills: many(agentSkills),
@@ -491,6 +536,10 @@ export const agentsRelations = relations(agents, ({ one, many }) => ({
   grants: many(accessGrants),
   routines: many(routines),
   memories: many(memories),
+}));
+
+export const agentSlackAppsRelations = relations(agentSlackApps, ({ one }) => ({
+  agent: one(agents, { fields: [agentSlackApps.agentId], references: [agents.id] }),
 }));
 
 export const agentSkillsRelations = relations(agentSkills, ({ one }) => ({

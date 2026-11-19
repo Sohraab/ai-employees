@@ -1,50 +1,73 @@
-# Setting up an AI employee in Slack
+# Setting up AI employees in Slack
 
-Each AI employee is its own Slack app, so it appears in Slack as a separate colleague with its
-own name, avatar and DMs. Repeat these steps for each employee.
+Each AI employee is its own Slack app, so it appears in Slack as a separate colleague with its own
+name, DMs and @mention. You don't create those apps by hand. After a one-time connection, adding an
+employee to Slack is **one command and one click**.
 
-## 1. Run the server somewhere Slack can reach
+## Before you start
 
-Slack needs a public HTTPS URL, for example `https://ai.example.com`. For local testing, use a
-tunnel such as `cloudflared tunnel --url http://localhost:3000`.
-
-## 2. Create the Slack app from a manifest
+The server needs these settings (see `.env.example`):
 
 ```bash
-npm run slack:manifest -- sourcer https://ai.example.com
+PUBLIC_URL=https://ai.example.com   # public HTTPS address Slack can reach
+SECRETS_KEY=…                       # encrypts Slack credentials in the database
+ADMIN_TOKEN=…                       # protects the /admin endpoints
 ```
 
-Copy the JSON, go to <https://api.slack.com/apps>, choose **Create New App → From a manifest**,
-pick your workspace and paste it. The manifest sets:
-
-- **Bot scopes:** `app_mentions:read`, `chat:write`, `im:history`, `im:read`, `im:write`, `users:read`, `files:read`
-- **Events:** `app_mention` (an @mention in a channel) and `message.im` (a DM), sent to `/slack/<slug>/events`
-- **Interactivity** (Approve/Deny buttons), sent to `/slack/<slug>/interactions`
-
-Upload the employee's avatar under **Basic Information → Display Information**.
-
-## 3. Install it and add the secrets
-
-Install the app to the workspace, then set two environment variables. The slug is upper-cased, with `-` replaced by `_`:
+Generate `SECRETS_KEY` once and keep it in your secret manager. If it's lost, every employee has to be reconnected to Slack.
 
 ```bash
-SLACK_BOT_TOKEN__SOURCER=xoxb-…         # OAuth & Permissions → Bot User OAuth Token
-SLACK_SIGNING_SECRET__SOURCER=…         # Basic Information → Signing Secret
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-## 4. Tell the database the bot's user id
+For local testing, a tunnel such as `cloudflared tunnel --url http://localhost:3000` gives you a public URL.
 
-Every message is routed to the right employee by the bot's Slack user id. To find it, open
-the app's profile in Slack and choose **Copy member ID**. Then set it as the agent's Slack address
-(`agent_channels.address`, channel `slack`). The seed data uses placeholders (`B_NOVA`, `B_ATLAS`).
+## Once: connect Slack
 
-People are recognized by their Slack member ID in `person_identities` (channel `slack`).
+1. A Slack workspace admin opens <https://api.slack.com/apps> and, under **Your App Configuration
+   Tokens**, clicks **Generate Token** for your workspace.
+2. Copy the **Refresh Token**. Slack expires the access token every 12 hours; the server renews it
+   automatically with the refresh token.
+3. Run:
 
-## 5. Connect its tools (Executor)
+```bash
+npm run slack:connect -- <refresh-token>
+```
 
-In Executor, create a **scoped connection** for this employee with only its accounts and tools,
-and set it to the **automatic** approval mode. This app handles approvals itself, per person and
-scope. Then set:
+The apps it creates belong to the admin whose token this is, so use an admin account that will stay
+with the company.
+
+## For each employee: one command, one click
+
+```bash
+npm run slack:hire -- sourcer
+```
+
+This creates the employee's Slack app with the right name, permissions, events and buttons, stores its
+credentials encrypted, and prints an **Add to Slack** link. A workspace admin opens the link and clicks **Allow**.
+That's it: the employee shows up in Slack and can be DMed or @mentioned.
+
+The same is available over HTTP for the upcoming admin console:
+
+```bash
+curl -X POST https://ai.example.com/admin/agents/sourcer/slack -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+Running the command again does not create a second app. It prints a fresh link, which is useful if
+the old one expired (links last 7 days and work once).
+
+**Optional:** give the employee a face. Slack has no API for app icons, so upload a picture under the
+app's **Basic Information** page on api.slack.com/apps (about 30 seconds).
+
+## People
+
+People are recognized by their Slack member ID (in Slack: profile → ⋯ → **Copy member ID**), stored in
+`person_identities` with channel `slack`.
+
+## Tools (Executor)
+
+In Executor, create a **scoped connection** for each employee with only its accounts and tools, set to
+the **automatic** approval mode (this app handles approvals per person and scope). Then set:
 
 ```bash
 EXECUTOR_URL__SOURCER=https://mcp.executor.sh/mcp?connection=<id>
@@ -57,8 +80,20 @@ The key is the agent's `executor_workspace`. Check that the tools load:
 npm run executor:check -- sourcer
 ```
 
-## 6. Try it
+## Try it
 
-- Invite the bot to a channel and write `@Nova find backend engineers in Berlin`.
+- Invite the employee to a channel and write `@Nova find backend engineers in Berlin`.
 - Ask for something that needs approval, such as sending an outreach email. Nova's manager gets a DM
   with **Approve** and **Deny** buttons, and Nova continues in the original thread once someone decides.
+
+## Creating an app by hand instead
+
+If you can't use a configuration token, create the app manually:
+
+```bash
+npm run slack:manifest -- sourcer https://ai.example.com
+```
+
+Paste the output at api.slack.com/apps → **Create New App → From a manifest**, install it, and set
+`SLACK_BOT_TOKEN__SOURCER` and `SLACK_SIGNING_SECRET__SOURCER`. Then set the bot's member ID as the
+agent's Slack address (`agent_channels`, channel `slack`).

@@ -2,7 +2,9 @@
  * Slack: one Slack app per AI employee, so each one shows up in Slack as its
  * own colleague with its own name, avatar and DMs.
  *
- * Per employee (by agent slug) we need two secrets, from the environment:
+ * Apps are normally created automatically (see slack-provisioning.ts), with
+ * their secrets stored encrypted in the database. An app made by hand can
+ * instead be configured with environment variables:
  *   SLACK_BOT_TOKEN__<SLUG>       xoxb-… bot token
  *   SLACK_SIGNING_SECRET__<SLUG>  to verify that requests really come from Slack
  * Events go to  POST /slack/<slug>/events
@@ -14,14 +16,17 @@ import { envKey } from "../adapters/executor.js";
 import type { InboundEnvelope, OutboundMessage } from "./types.js";
 
 export interface SlackAppSecrets {
-  botToken: string;
+  /** Missing until a workspace admin has installed the app. */
+  botToken?: string;
   signingSecret: string;
 }
 
-export type SlackSecretsLookup = (agentSlug: string) => SlackAppSecrets | undefined;
+export type SlackSecretsLookup = (agentSlug: string) => Promise<SlackAppSecrets | undefined>;
+
+export const BOT_SCOPES = ["app_mentions:read", "chat:write", "im:history", "im:read", "im:write", "users:read", "files:read"];
 
 export function slackSecretsFromEnv(env = process.env): SlackSecretsLookup {
-  return (slug) => {
+  return async (slug) => {
     const key = envKey(slug);
     const botToken = env[`SLACK_BOT_TOKEN__${key}`];
     const signingSecret = env[`SLACK_SIGNING_SECRET__${key}`];
@@ -157,13 +162,14 @@ export class SlackSender {
 
   async send(msg: OutboundMessage): Promise<void> {
     const slug = await this.slugOf(msg.agentId);
-    const app = slug ? this.secrets(slug) : undefined;
-    if (!slug || !app) throw new Error(`No Slack app configured for agent ${msg.agentId}`);
+    const app = slug ? await this.secrets(slug) : undefined;
+    if (!slug || !app?.botToken) throw new Error(`No installed Slack app for agent ${msg.agentId}`);
 
-    let client = this.clients.get(slug);
+    // Keyed by token, so a reinstalled app (new token) gets a new client.
+    let client = this.clients.get(app.botToken);
     if (!client) {
       client = this.makeClient(app.botToken);
-      this.clients.set(slug, client);
+      this.clients.set(app.botToken, client);
     }
 
     // Posting to a user id (U…) opens a DM from this employee's app.
@@ -203,19 +209,21 @@ function escapeMrkdwn(s: string): string {
 }
 
 /**
- * Slack app manifest for one AI employee. Paste it at api.slack.com/apps →
- * Create New App → From a manifest.
+ * Slack app manifest for one AI employee. Used by automatic provisioning, or
+ * pasted at api.slack.com/apps → Create New App → From a manifest.
  */
 export function slackManifest(params: { name: string; role: string; slug: string; baseUrl: string }) {
   const base = params.baseUrl.replace(/\/$/, "");
   return {
-    display_information: { name: params.name, description: params.role },
+    // Slack limits: app name 35 characters, short description 140.
+    display_information: { name: params.name.slice(0, 35), description: params.role.slice(0, 140) },
     features: {
-      bot_user: { display_name: params.name, always_online: true },
+      bot_user: { display_name: params.name.slice(0, 80), always_online: true },
       app_home: { messages_tab_enabled: true, messages_tab_read_only_enabled: false },
     },
     oauth_config: {
-      scopes: { bot: ["app_mentions:read", "chat:write", "im:history", "im:read", "im:write", "users:read", "files:read"] },
+      redirect_urls: [`${base}/slack/oauth/callback`],
+      scopes: { bot: BOT_SCOPES },
     },
     settings: {
       event_subscriptions: {

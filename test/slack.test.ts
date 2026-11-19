@@ -62,7 +62,7 @@ describe("Slack sender", () => {
   it("sends from the right employee's app, in thread, with approval buttons", async () => {
     const posted: { token: string; args: Record<string, unknown> }[] = [];
     const sender = new SlackSender(
-      (slug) => ({ botToken: `xoxb-${slug}`, signingSecret: "x" }),
+      async (slug) => ({ botToken: `xoxb-${slug}`, signingSecret: "x" }),
       async (id) => (id === "agent-nova" ? "sourcer" : undefined),
       (token): SlackPoster => ({ postMessage: async (args) => void posted.push({ token, args }) }),
     );
@@ -104,7 +104,7 @@ describe("Slack end to end over HTTP", () => {
       tools: new FakeTools(),
       notify: new ChannelNotifier({
         slack: new SlackSender(
-          () => ({ botToken: "xoxb", signingSecret: SECRET }),
+          async () => ({ botToken: "xoxb", signingSecret: SECRET }),
           async () => "sourcer",
           () => ({ postMessage: async (args) => void posted.push(args) }),
         ),
@@ -113,7 +113,7 @@ describe("Slack end to end over HTTP", () => {
     const pending: Promise<unknown>[] = [];
     const app = createApp({
       deps,
-      slackSecrets: (slug) => (slug === "sourcer" ? { botToken: "xoxb", signingSecret: SECRET } : undefined),
+      slackSecrets: async (slug) => (slug === "sourcer" ? { botToken: "xoxb", signingSecret: SECRET } : undefined),
       background: (w) => void pending.push(w),
       now: () => NOW,
     });
@@ -129,12 +129,13 @@ describe("Slack end to end over HTTP", () => {
       event: { type: "app_mention", user, text: `<@B_NOVA> ${text}`, channel: "C_TALENT", ts: "100.1" },
     });
 
-  it("answers Slack's URL check and rejects unsigned requests", async () => {
+  it("answers Slack's URL check (even before the app's secret is known) and rejects unsigned events", async () => {
     const { app } = await setup([]);
-    const body = JSON.stringify({ type: "url_verification", challenge: "abc" });
-    const ok = await app.request("/slack/sourcer/events", { method: "POST", body, headers: sign(body) });
+    const check = JSON.stringify({ type: "url_verification", challenge: "abc" });
+    const ok = await app.request("/slack/brand-new-app/events", { method: "POST", body: check });
     expect(await ok.json()).toEqual({ challenge: "abc" });
 
+    const body = eventBody("hello");
     const bad = await app.request("/slack/sourcer/events", { method: "POST", body, headers: { "x-slack-signature": "v0=nope" } });
     expect(bad.status).toBe(401);
     const unknownApp = await app.request("/slack/nobody/events", { method: "POST", body, headers: sign(body) });

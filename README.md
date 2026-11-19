@@ -8,8 +8,9 @@ Slack, email, WhatsApp and (later) phone, the way you'd reach a colleague.
 Built so far: the data model, the rules for identity, access and memory, and the **engine** that runs requests end to end
 (routing, permission-gated tool loop, approvals that pause and resume, memory tools, routine runs, budgets, audit).
 Connected to real services: **Claude** (each employee picks its own model and effort), **Executor** (each
-employee's own scoped connection), and **Slack** (one Slack app per employee, with Approve/Deny buttons).
-Set up an employee in Slack with [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md).
+employee's own scoped connection), and **Slack** (one Slack app per employee, with Approve/Deny buttons). Slack apps are **created automatically**:
+connect Slack once, then each employee takes one command (`npm run slack:hire -- <slug>`) and one "Allow" click.
+See [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md).
 
 ## Core ideas
 
@@ -95,7 +96,9 @@ Senders whose identity isn't verified for this message (e.g. an email failing DK
 | `src/adapters/claude.ts` | Claude Messages API: per-employee model and effort, raw blocks replayed unchanged, refusal fallback, cost tracking |
 | `src/adapters/executor.ts` | Executor over MCP: lists and calls tools one at a time through the employee's scoped connection |
 | `src/channels/slack.ts` | Slack: request signing, events → envelopes, sending as the right app, approval buttons, app manifest |
-| `src/server/app.ts` | HTTP endpoints: `/slack/:slug/events`, `/slack/:slug/interactions`, `/healthz` |
+| `src/channels/slack-provisioning.ts` | Automatic Slack setup: creates each employee's app from a manifest, renews the config token, "Add to Slack" install |
+| `src/core/secrets.ts` | AES-256-GCM encryption for credentials stored in the database |
+| `src/server/app.ts` | HTTP endpoints: Slack events and buttons, `/slack/oauth/callback`, `/admin/*`, `/healthz` |
 | `src/server/main.ts` | Server + worker; tasks queued in Postgres (pg-boss) |
 
 ## Getting started

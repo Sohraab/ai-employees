@@ -17,7 +17,9 @@
     "start": "tsx src/server/main.ts",
     "dev": "tsx watch src/server/main.ts",
     "slack:manifest": "tsx src/scripts/slack-manifest.ts",
-    "executor:check": "tsx src/scripts/executor-check.ts"
+    "executor:check": "tsx src/scripts/executor-check.ts",
+    "slack:connect": "tsx src/scripts/slack-connect.ts",
+    "slack:hire": "tsx src/scripts/slack-hire.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",
