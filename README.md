@@ -3,8 +3,11 @@
 AI employees with their own memory, skills, tools, routines and access rules, reachable from
 Slack, email, WhatsApp and (later) phone, the way you'd reach a colleague.
 
-This repo currently holds **step 1: the data model** and the core rules for identity, access and memory.
-The agent runtime, channel adapters and admin console come next (see the roadmap below).
+**How it all works:** see [`docs/PLAN.md`](docs/PLAN.md), covering connectors, permissions, routines, memory, approvals and the build phases.
+
+Built so far: the data model, the rules for identity, access and memory, and the **engine** that runs requests end to end
+(routing, permission-gated tool loop, approvals that pause and resume, memory tools, routine runs, budgets, audit).
+The engine talks to the model, Executor and the channels through interfaces; real adapters come next.
 
 ## Core ideas
 
@@ -71,6 +74,18 @@ A grant's `scopes` narrow it (e.g. `["candidate_outreach"]`); an empty list cove
 Grants are checked one at a time and never combined. The agent's manager has implicit `manage`, and org admins have implicit `admin`.
 Senders whose identity isn't verified for this message (e.g. an email failing DKIM, or a phone number with no OTP check yet) are limited to `talk`.
 
+## Engine (`src/engine`)
+
+| File | Does |
+|---|---|
+| `router.ts` | `handleInbound(envelope)`: route to agent → identify → authorize → record → create task, or reply as receptionist |
+| `runner.ts` | `runTask(id)`: build prompt → model step → gate each tool call → execute / deny / pause for approval → reply |
+| `approvals.ts` | `decideApproval()`: only the approver or a manager can decide; resumes the task when the last approval is in |
+| `routines.ts` | `startRoutineRun()`: runs as `run_as`, re-checks access, pauses the routine and tells the manager if access is gone |
+| `builtins.ts` | `memory.search` / `memory.save`, with the same permission rules |
+| `prompt.ts` | System prompt: identity, skills, who it's working for, what that person may have it do, visible memories |
+| `types.ts` | `AgentModel`, `ToolExecutor`, `Notifier` interfaces (Claude, Executor and channel adapters plug in here) |
+
 ## Getting started
 
 ```bash
@@ -108,11 +123,11 @@ After changing `src/db/schema.ts`, run `npm run db:generate` to create a new mig
 
 ## Roadmap
 
-1. ✅ Data model, identity, access rules, memory visibility, tests
-2. Slack adapter (Bolt) and event router: envelope → identify → authorize → task
-3. Agent runtime: Claude Agent SDK, with Executor as the MCP tool server; tool calls gated by `authorizeToolCall`
-4. Approvals through Slack buttons; audit log writes
-5. Routine scheduler (Inngest, Trigger.dev or Temporal)
+1. ✅ Data model, identity, access rules, memory visibility
+2. ✅ Engine core: router, permission-gated runner, approvals, memory tools, routine runs, budgets, audit (44 tests)
+3. Claude model adapter (Messages API with tool use) and Executor tool adapter
+4. Slack adapter (Bolt) + API server + job queue (pg-boss); approvals via Slack buttons
+5. Routine scheduler (cron → `next_run_at`)
 6. Email adapter (inbound via Postmark or Resend, with SPF/DKIM checks)
 7. Admin console (Next.js): agents, grants, routines, task feed, memories, costs
 8. WhatsApp adapter, then phone

@@ -352,8 +352,12 @@ export const tasks = pgTable(
     input: text("input").notNull(),
     output: text("output"),
     error: text("error"),
+    /** How far we trust the requester's identity for this request. */
+    callerTrust: text("caller_trust").$type<"verified" | "unverified">().notNull().default("verified"),
     replyChannel: channelEnum("reply_channel"),
     replyTarget: text("reply_target"),
+    /** Full model transcript, so a task can pause for approval and resume later. */
+    transcript: jsonb("transcript").$type<unknown[]>().notNull().default([]),
     inputTokens: integer("input_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull().default(0),
     costUsd: numeric("cost_usd", { precision: 10, scale: 4 }).notNull().default("0"),
@@ -376,6 +380,8 @@ export const approvals = pgTable(
     taskId: uuid("task_id")
       .notNull()
       .references(() => tasks.id, { onDelete: "cascade" }),
+    /** The model's id for this tool call, used to resume the transcript. */
+    toolCallId: text("tool_call_id").notNull(),
     tool: text("tool").notNull(),
     args: jsonb("args").notNull(),
     approverId: uuid("approver_id")
@@ -387,7 +393,10 @@ export const approvals = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("approvals_approver_status_idx").on(t.approverId, t.status)],
+  (t) => [
+    index("approvals_approver_status_idx").on(t.approverId, t.status),
+    index("approvals_task_idx").on(t.taskId),
+  ],
 );
 
 // ---------------------------------------------------------------------------
@@ -524,3 +533,5 @@ export type AgentTool = typeof agentTools.$inferSelect;
 export type Memory = typeof memories.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Routine = typeof routines.$inferSelect;
+export type Approval = typeof approvals.$inferSelect;
+export type Conversation = typeof conversations.$inferSelect;

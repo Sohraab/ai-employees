@@ -72,6 +72,7 @@ CREATE TABLE "agents" (
 CREATE TABLE "approvals" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"task_id" uuid NOT NULL,
+	"tool_call_id" text NOT NULL,
 	"tool" text NOT NULL,
 	"args" jsonb NOT NULL,
 	"approver_id" uuid NOT NULL,
@@ -191,8 +192,10 @@ CREATE TABLE "tasks" (
 	"input" text NOT NULL,
 	"output" text,
 	"error" text,
+	"caller_trust" text DEFAULT 'verified' NOT NULL,
 	"reply_channel" "channel",
 	"reply_target" text,
+	"transcript" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"input_tokens" integer DEFAULT 0 NOT NULL,
 	"output_tokens" integer DEFAULT 0 NOT NULL,
 	"cost_usd" numeric(10, 4) DEFAULT '0' NOT NULL,
@@ -248,6 +251,7 @@ CREATE UNIQUE INDEX "agent_skills_agent_name_uq" ON "agent_skills" USING btree (
 CREATE UNIQUE INDEX "agent_tools_agent_pattern_uq" ON "agent_tools" USING btree ("agent_id","tool_pattern");--> statement-breakpoint
 CREATE UNIQUE INDEX "agents_org_slug_uq" ON "agents" USING btree ("org_id","slug");--> statement-breakpoint
 CREATE INDEX "approvals_approver_status_idx" ON "approvals" USING btree ("approver_id","status");--> statement-breakpoint
+CREATE INDEX "approvals_task_idx" ON "approvals" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "audit_log_org_created_idx" ON "audit_log" USING btree ("org_id","created_at");--> statement-breakpoint
 CREATE INDEX "audit_log_agent_created_idx" ON "audit_log" USING btree ("agent_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "conversations_agent_channel_thread_uq" ON "conversations" USING btree ("agent_id","channel","thread_ref");--> statement-breakpoint

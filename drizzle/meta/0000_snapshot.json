@@ -1,5 +1,5 @@
 {
-  "id": "1dbc0086-37db-4cb9-9106-bb35e21e0a75",
+  "id": "2f54a3d9-efa3-4623-94e2-5d88b93581a9",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -598,6 +598,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "tool_call_id": {
+          "name": "tool_call_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "tool": {
           "name": "tool",
           "type": "text",
@@ -662,6 +668,21 @@
             },
             {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "approvals_task_idx": {
+          "name": "approvals_task_idx",
+          "columns": [
+            {
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1811,6 +1832,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "caller_trust": {
+          "name": "caller_trust",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'verified'"
+        },
         "reply_channel": {
           "name": "reply_channel",
           "type": "channel",
@@ -1823,6 +1851,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "transcript": {
+          "name": "transcript",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "input_tokens": {
           "name": "input_tokens",

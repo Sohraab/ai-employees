@@ -16,6 +16,8 @@ export interface InboundEnvelope {
   text: string;
   /** Channel-native thread id: Slack thread_ts, email root Message-ID, WhatsApp chat id. */
   threadRef: string;
+  /** Where replies go: Slack channel id, sender's email address, phone number. */
+  replyTarget: string;
   attachments: { name: string; url: string; mimeType?: string }[];
   proof: SenderProof;
   receivedAt: Date;
